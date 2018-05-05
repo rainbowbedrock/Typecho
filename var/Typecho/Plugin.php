@@ -78,6 +78,7 @@ class Typecho_Plugin
      *
      * @access public
      * @param string $handle 插件
+     * @return void
      */
     public function __construct($handle)
     {
@@ -91,7 +92,7 @@ class Typecho_Plugin
      * @access private
      * @param array $pluginHandles
      * @param array $otherPluginHandles
-     * @return array
+     * @return void
      */
     private static function pluginHandlesDiff(array $pluginHandles, array $otherPluginHandles)
     {
@@ -109,6 +110,7 @@ class Typecho_Plugin
      *
      * @access public
      * @param array $plugins 插件列表
+     * @param mixed $callback 获取插件系统变量的代理函数
      * @return void
      */
     public static function init(array $plugins)
@@ -124,7 +126,6 @@ class Typecho_Plugin
      * 获取实例化插件对象
      *
      * @access public
-     * @param string $handle 插件
      * @return Typecho_Plugin
      */
     public static function factory($handle)
@@ -335,7 +336,6 @@ class Typecho_Plugin
      * @param string $pluginName 插件名
      * @param string $path 插件目录
      * @return array
-     * @throws Typecho_Plugin_Exception
      */
     public static function portal($pluginName, $path)
     {
@@ -405,7 +405,7 @@ class Typecho_Plugin
      *
      * @access public
      * @param string $pluginName 插件名称
-     * @return mixed
+     * @return void
      */
     public function exists($pluginName) {
         return array_search($pluginName, self::$_plugins['activated']);

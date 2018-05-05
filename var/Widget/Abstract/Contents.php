@@ -272,8 +272,8 @@ class Widget_Abstract_Contents extends Widget_Abstract
         /** 构建插入结构 */
         $insertStruct = array(
             'title'         =>  empty($content['title']) ? NULL : htmlspecialchars($content['title']),
-            'created'       =>  empty($content['created']) ? $this->options->time : $content['created'],
-            'modified'      =>  $this->options->time,
+            'created'       =>  empty($content['created']) ? $this->options->gmtTime : $content['created'],
+            'modified'      =>  $this->options->gmtTime,
             'text'          =>  empty($content['text']) ? NULL : $content['text'],
             'order'         =>  empty($content['order']) ? 0 : intval($content['order']),
             'authorId'      =>  isset($content['authorId']) ? $content['authorId'] : $this->user->uid,
@@ -345,7 +345,7 @@ class Widget_Abstract_Contents extends Widget_Abstract
             $updateStruct['created'] = $content['created'];
         }
 
-        $updateStruct['modified'] = $this->options->time;
+        $updateStruct['modified'] = $this->options->gmtTime;
 
         /** 首先插入部分数据 */
         $updateCondition = clone $condition;
@@ -646,7 +646,7 @@ class Widget_Abstract_Contents extends Widget_Abstract
         if (!empty($value['categories'])) {
             $value['category'] = $value['categories'][0]['slug'];
 
-            $value['directory'] = $this->widget('Widget_Metas_Category_List')->getAllParentsSlug($value['categories'][0]['mid']);
+            $value['directory'] = $this->widget('Widget_Metas_Category_List')->getAllParents($value['categories'][0]['mid']);
             $value['directory'][] = $value['category'];
         }
 
@@ -696,11 +696,9 @@ class Widget_Abstract_Contents extends Widget_Abstract
         }
 
         /** 处理Markdown **/
-        if (isset($value['text'])) {
-            $value['isMarkdown'] = (0 === strpos($value['text'], '<!--markdown-->'));
-            if ($value['isMarkdown']) {
-                $value['text'] = substr($value['text'], 15);
-            }
+        $value['isMarkdown'] = (0 === strpos($value['text'], '<!--markdown-->'));
+        if ($value['isMarkdown']) {
+            $value['text'] = substr($value['text'], 15);
         }
 
         /** 生成聚合链接 */
@@ -850,7 +848,7 @@ class Widget_Abstract_Contents extends Widget_Abstract
                 /** 对自动关闭反馈功能的支持 */
                 if (('ping' == $permission || 'comment' == $permission) && $this->options->commentsPostTimeout > 0 &&
                 $this->options->commentsAutoClose) {
-                    if ($this->options->time - $this->created > $this->options->commentsPostTimeout) {
+                    if ($this->options->gmtTime - $this->created > $this->options->commentsPostTimeout) {
                         return false;
                     }
                 }
@@ -878,35 +876,6 @@ class Widget_Abstract_Contents extends Widget_Abstract
             $result = array();
 
             foreach ($categories as $category) {
-                $result[] = $link ? '<a href="' . $category['permalink'] . '">'
-                . $category['name'] . '</a>' : $category['name'];
-            }
-
-            echo implode($split, $result);
-        } else {
-            echo $default;
-        }
-    }
-
-    /**
-     * 输出文章多级分类
-     *
-     * @access public
-     * @param string $split 多个分类之间分隔符
-     * @param boolean $link 是否输出链接
-     * @param string $default 如果没有则输出
-     * @return void
-     */
-    public function directory($split = '/', $link = true, $default = NULL)
-    {
-        $category = $this->categories[0];
-        $directory = $this->widget('Widget_Metas_Category_List')->getAllParents($category['mid']);
-        $directory[] = $category;
-
-        if ($directory) {
-            $result = array();
-
-            foreach ($directory as $category) {
                 $result[] = $link ? '<a href="' . $category['permalink'] . '">'
                 . $category['name'] . '</a>' : $category['name'];
             }
@@ -959,7 +928,7 @@ class Widget_Abstract_Contents extends Widget_Abstract
      * 
      * @param mixed $text 
      * @access public
-     * @return string
+     * @return void
      */
     public function autoP($text)
     {
@@ -983,7 +952,7 @@ class Widget_Abstract_Contents extends Widget_Abstract
      * 
      * @param mixed $text 
      * @access public
-     * @return string
+     * @return void
      */
     public function markdown($text)
     {

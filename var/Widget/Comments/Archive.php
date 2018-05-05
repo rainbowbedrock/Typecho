@@ -43,6 +43,14 @@ class Widget_Comments_Archive extends Widget_Abstract_Comments
      * @var array
      */
     private $_threadedComments = array();
+    
+    /**
+     * 多级评论回调函数
+     * 
+     * @access private
+     * @var mixed
+     */
+    private $_customThreadedCommentsCallback = false;
 
     /**
      * _singleCommentOptions  
@@ -65,6 +73,11 @@ class Widget_Comments_Archive extends Widget_Abstract_Comments
     {
         parent::__construct($request, $response, $params);
         $this->parameter->setDefault('parentId=0&commentPage=0&commentsNum=0&allowComment=1');
+        
+        /** 初始化回调函数 */
+        if (function_exists('threadedComments')) {
+            $this->_customThreadedCommentsCallback = true;
+        }
     }
     
     /**
@@ -76,7 +89,7 @@ class Widget_Comments_Archive extends Widget_Abstract_Comments
     private function threadedCommentsCallback()
     {
         $singleCommentOptions = $this->_singleCommentOptions;
-        if (function_exists('threadedComments')) {
+        if ($this->_customThreadedCommentsCallback) {
             return threadedComments($this, $singleCommentOptions);
         }
         
@@ -88,6 +101,8 @@ class Widget_Comments_Archive extends Widget_Abstract_Comments
                 $commentClass .= ' comment-by-user';
             }
         }
+        
+        $commentLevelClass = $this->levels > 0 ? ' comment-child' : ' comment-parent';
 ?>
 <li itemscope itemtype="http://schema.org/UserComments" id="<?php $this->theId(); ?>" class="comment-body<?php
     if ($this->levels > 0) {

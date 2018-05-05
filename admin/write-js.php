@@ -30,7 +30,6 @@ $(document).ready(function() {
         secondText      :   '<?php _e('秒'); ?>',
 
         dateFormat      :   'yy-mm-dd',
-        timezone        :   <?php $options->timezone(); ?> / 60,
         hour            :   (new Date()).getHours(),
         minute          :   (new Date()).getMinutes()
     });
@@ -78,7 +77,7 @@ $(document).ready(function() {
             noResultsText   :   '<?php _e('此标签不存在, 按回车创建'); ?>',
             prePopulate     :   tagsPre,
 
-            onResult        :   function (result, query, val) {
+            onResult        :   function (result, query) {
                 if (!query) {
                     return result;
                 }
@@ -89,8 +88,8 @@ $(document).ready(function() {
 
                 if (!result[0] || result[0]['id'] != query) {
                     result.unshift({
-                        id      :   val,
-                        tags    :   val
+                        id      :   query,
+                        tags    :   query
                     });
                 }
 
@@ -151,23 +150,6 @@ $(document).ready(function() {
     var submitted = false, form = $('form[name=write_post],form[name=write_page]').submit(function () {
         submitted = true;
     }), savedData = null;
-
-    // 计算夏令时偏移
-    var dstOffset = (function () {
-        var d = new Date(),
-            jan = new Date(d.getFullYear(), 0, 1),
-            jul = new Date(d.getFullYear(), 6, 1),
-            stdOffset = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
-
-        return stdOffset - d.getTimezoneOffset();
-    })();
-    
-    if (dstOffset > 0) {
-        $('<input name="dst" type="hidden" />').appendTo(form).val(dstOffset);
-    }
-
-    // 时区
-    $('<input name="timezone" type="hidden" />').appendTo(form).val(- (new Date).getTimezoneOffset() * 60);
 
     // 自动保存
 <?php if ($options->autoSave): ?>
@@ -234,7 +216,7 @@ $(document).ready(function() {
     $('#edit-secondary .typecho-option-tabs li').click(function() {
         $('#edit-secondary .typecho-option-tabs li').removeClass('active');
         $(this).addClass('active');
-        $(this).parents('#edit-secondary').find('.tab-content').addClass('hidden');
+        $('.tab-content').addClass('hidden');
         
         var selected_tab = $(this).find('a').attr('href'),
             selected_el = $(selected_tab).removeClass('hidden');

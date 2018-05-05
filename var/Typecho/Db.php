@@ -37,7 +37,7 @@ class Typecho_Db
     /** 表左连接方式 */
     const LEFT_JOIN = 'LEFT';
 
-    /** 表右连接方式 */
+    /** 表外连接方式 */
     const RIGHT_JOIN = 'RIGHT';
 
     /** 数据库查询操作 */
@@ -160,48 +160,11 @@ class Typecho_Db
      * getConfig  
      * 
      * @access public
-     * @return array
+     * @return void
      */
     public function getConfig()
     {
         return $this->_config;
-    }
-
-    /**
-     * 重置连接池
-     * 
-     * @return void
-     */
-    public function flushPool()
-    {
-        $this->_connectedPool = array();
-    }
-
-    /**
-     * 选择数据库
-     * 
-     * @param int $op 
-     * @return Typecho_Db_Adapter
-     * @throws Typecho_Db_Exception
-     */
-    public function selectDb($op)
-    {
-        if (!isset($this->_connectedPool[$op])) {
-            if (empty($this->_pool[$op])) {
-                /** Typecho_Db_Exception */
-                throw new Typecho_Db_Exception('Missing Database Connection');
-            }
-            
-            //获取相应读或写服务器连接池中的一个
-            $selectConnection = rand(0, count($this->_pool[$op]) - 1); 
-            //获取随机获得的连接池配置
-            $selectConnectionConfig = $this->_config[$this->_pool[$op][$selectConnection]];
-            $selectConnectionHandle = $this->_adapter->connect($selectConnectionConfig);
-            $this->_connectedPool[$op] = &$selectConnectionHandle;
-            
-        }
-
-        return $this->_connectedPool[$op];
     }
 
     /**
@@ -238,17 +201,6 @@ class Typecho_Db
                 $this->_pool[self::WRITE][] = $key;
                 break;
         }
-    }
-
-    /**
-     * 获取版本
-     * 
-     * @param int $op 
-     * @return string
-     */
-    public function getVersion($op = self::READ)
-    {
-        return $this->_adapter->getVersion($this->selectDb($op));
     }
 
     /**
@@ -347,11 +299,24 @@ class Typecho_Db
         }
 
         /** 选择连接池 */
-        $handle = $this->selectDb($op);
+        if (!isset($this->_connectedPool[$op])) {
+            if (empty($this->_pool[$op])) {
+                /** Typecho_Db_Exception */
+                throw new Typecho_Db_Exception('Missing Database Connection');
+            }
+            
+            //获取相应读或写服务器连接池中的一个
+            $selectConnection = rand(0, count($this->_pool[$op]) - 1); 
+            //获取随机获得的连接池配置
+            $selectConnectionConfig = $this->_config[$this->_pool[$op][$selectConnection]];
+            $selectConnectionHandle = $this->_adapter->connect($selectConnectionConfig);
+            $this->_connectedPool[$op] = &$selectConnectionHandle;
+            
+        }
+        $handle = $this->_connectedPool[$op];
 
         /** 提交查询 */
-        $resource = $this->_adapter->query($query instanceof Typecho_Db_Query ?
-            $query->prepare($query) : $query, $handle, $op, $action);
+        $resource = $this->_adapter->query($query, $handle, $op, $action);
 
         if ($action) {
             //根据查询动作返回相应资源
@@ -403,7 +368,7 @@ class Typecho_Db
      *
      * @param mixed $query 查询对象
      * @param array $filter 行过滤器函数,将查询的每一行作为第一个参数传入指定的过滤器中
-     * @return mixed
+     * @return stdClass
      */
     public function fetchRow($query, array $filter = NULL)
     {
@@ -424,7 +389,7 @@ class Typecho_Db
      *
      * @param mixed $query 查询对象
      * @param array $filter 行过滤器函数,将查询的每一行作为第一个参数传入指定的过滤器中
-     * @return mixed
+     * @return array
      */
     public function fetchObject($query, array $filter = NULL)
     {

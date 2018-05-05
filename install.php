@@ -1,4 +1,3 @@
-<?php if (!file_exists(dirname(__FILE__) . '/config.inc.php')): ?>
 <?php
 /**
  * Typecho Blog Platform
@@ -52,23 +51,14 @@ require_once 'Typecho/Router.php';
 /** 程序初始化 */
 Typecho_Common::init();
 
-else:
+ob_start();
 
-    require_once dirname(__FILE__) . '/config.inc.php';
+session_start();
 
-    //判断是否已经安装
-    $db = Typecho_Db::get();
-    try {
-        $installed = $db->fetchRow($db->select()->from('table.options')->where('name = ?', 'installed'));
-        if (empty($installed) || $installed['value'] == 1) {
-            Typecho_Response::setStatus(404);
-            exit;
-        }
-    } catch (Exception $e) {
-        // do nothing
-    }
-
-endif;
+//判断是否已经安装
+if (!isset($_GET['finish']) && file_exists(__TYPECHO_ROOT_DIR__ . '/config.inc.php') && empty($_SESSION['typecho'])) {
+    exit;
+}
 
 // 挡掉可能的跨站请求
 if (!empty($_GET) || !empty($_POST)) {
@@ -77,7 +67,7 @@ if (!empty($_GET) || !empty($_POST)) {
     }
 
     $parts = parse_url($_SERVER['HTTP_REFERER']);
-	if (!empty($parts['port'])) {
+	if (!empty($parts['port']) && $parts['port'] != 80 && !Typecho_Common::isAppEngine()) {
         $parts['host'] = "{$parts['host']}:{$parts['port']}";
     }
 
@@ -136,8 +126,6 @@ function _p($adapter) {
     switch ($adapter) {
         case 'Mysql':
             return Typecho_Db_Adapter_Mysql::isAvailable();
-        case 'Mysqli':
-            return Typecho_Db_Adapter_Mysqli::isAvailable();
         case 'Pdo_Mysql':
             return Typecho_Db_Adapter_Pdo_Mysql::isAvailable();
         case 'SQLite':
@@ -223,7 +211,7 @@ Typecho_Cookie::set('__typecho_lang', $lang);
         <div class="col-mb-12 col-tb-8 col-tb-offset-2">
             <div class="column-14 start-06 typecho-install">
             <?php if (isset($_GET['finish'])) : ?>
-                <?php if (!isset($db)) : ?>
+                <?php if (!@file_exists(__TYPECHO_ROOT_DIR__ . '/config.inc.php')) : ?>
                 <h1 class="typecho-install-title"><?php _e('安装失败!'); ?></h1>
                 <div class="typecho-install-body">
                     <form method="post" action="?config" name="config">
@@ -231,15 +219,19 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                     </form>
                 </div>
                 <?php elseif (!Typecho_Cookie::get('__typecho_config')): ?>
-                    <h1 class="typecho-install-title"><?php _e('没有安装!'); ?></h1>
-                    <div class="typecho-install-body">
-                        <form method="post" action="?config" name="config">
-                            <p class="message error"><?php _e('您没有执行安装步骤，请您重新安装！'); ?> <button class="btn primary" type="submit"><?php _e('重新安装 &raquo;'); ?></button></p>
-                        </form>
-                    </div>
+                <h1 class="typecho-install-title"><?php _e('没有安装!'); ?></h1>
+                <div class="typecho-install-body">
+                    <form method="post" action="?config" name="config">
+                    <p class="message error"><?php _e('您没有执行安装步骤，请您重新安装！'); ?> <button class="btn primary" type="submit"><?php _e('重新安装 &raquo;'); ?></button></p>
+                    </form>
+                </div>
                 <?php else : ?>
                     <?php
-                    $db->query($db->update('table.options')->rows(['value' => 1])->where('name = ?', 'installed'));
+                    $config = unserialize(base64_decode(Typecho_Cookie::get('__typecho_config')));
+                    Typecho_Cookie::delete('__typecho_config');
+                    $db = new Typecho_Db($config['adapter'], $config['prefix']);
+                    $db->addServer($config, Typecho_Db::READ | Typecho_Db::WRITE);
+                    Typecho_Db::set($db);
                     ?>
                 <h1 class="typecho-install-title"><?php _e('安装成功!'); ?></h1>
                 <div class="typecho-install-body">
@@ -279,7 +271,7 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                 </div>
                 <?php endif;?>
             <?php elseif (isset($_GET['start'])): ?>
-                <?php if (!isset($db)) : ?>
+                <?php if (!@file_exists(__TYPECHO_ROOT_DIR__ . '/config.inc.php')) : ?>
                 <h1 class="typecho-install-title"><?php _e('安装失败!'); ?></h1>
                 <div class="typecho-install-body">
                     <form method="post" action="?config" name="config">
@@ -291,10 +283,11 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                                     $config = unserialize(base64_decode(Typecho_Cookie::get('__typecho_config')));
                                     $type = explode('_', $config['adapter']);
                                     $type = array_pop($type);
-                                    $type = $type == 'Mysqli' ? 'Mysql' : $type;
-                                    $installDb = $db;
 
                                     try {
+                                        $installDb = new Typecho_Db($config['adapter'], $config['prefix']);
+                                        $installDb->addServer($config, Typecho_Db::READ | Typecho_Db::WRITE);
+
                                         /** 初始化数据库结构 */
                                         $scripts = file_get_contents ('./install/' . $type . '.sql');
                                         $scripts = str_replace('typecho_', $config['prefix'], $scripts);
@@ -347,7 +340,6 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'editorSize', 'user' => 0, 'value' => 350)));
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'autoSave', 'user' => 0, 'value' => 0)));
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'markdown', 'user' => 0, 'value' => 1)));
-                                        $installDb->query($installDb->insert('table.options')->rows(array('name' => 'xmlrpcMarkdown', 'user' => 0, 'value' => 0)));
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'commentsMaxNestingLevels', 'user' => 0, 'value' => 5)));
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'commentsPostTimeout', 'user' => 0, 'value' => 24 * 3600 * 30)));
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'commentsUrlNofollow', 'user' => 0, 'value' => 1)));
@@ -371,8 +363,6 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'panelTable', 'user' => 0, 'value' => 'a:0:{}')));
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'attachmentTypes', 'user' => 0, 'value' => '@image@')));
                                         $installDb->query($installDb->insert('table.options')->rows(array('name' => 'secret', 'user' => 0, 'value' => Typecho_Common::randString(32, true))));
-                                        $installDb->query($installDb->insert('table.options')->rows(array('name' => 'installed', 'user' => 0, 'value' => 0)));
-                                        $installDb->query($installDb->insert('table.options')->rows(array('name' => 'allowXmlRpc', 'user' => 0, 'value' => 2)));
 
                                         /** 初始分类 */
                                         $installDb->query($installDb->insert('table.metas')->rows(array('name' => _t('默认分类'), 'slug' => 'default', 'type' => 'category', 'description' => _t('只是一个默认分类'),
@@ -382,16 +372,16 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                                         $installDb->query($installDb->insert('table.relationships')->rows(array('cid' => 1, 'mid' => 1)));
 
                                         /** 初始内容 */
-                                        $installDb->query($installDb->insert('table.contents')->rows(array('title' => _t('欢迎使用 Typecho'), 'slug' => 'start', 'created' => Typecho_Date::time(), 'modified' => Typecho_Date::time(),
+                                        $installDb->query($installDb->insert('table.contents')->rows(array('title' => _t('欢迎使用 Typecho'), 'slug' => 'start', 'created' => Typecho_Date::gmtTime(), 'modified' => Typecho_Date::gmtTime(),
                                         'text' => '<!--markdown-->' . _t('如果您看到这篇文章,表示您的 blog 已经安装成功.'), 'authorId' => 1, 'type' => 'post', 'status' => 'publish', 'commentsNum' => 1, 'allowComment' => 1,
                                         'allowPing' => 1, 'allowFeed' => 1, 'parent' => 0)));
 
-                                        $installDb->query($installDb->insert('table.contents')->rows(array('title' => _t('关于'), 'slug' => 'start-page', 'created' => Typecho_Date::time(), 'modified' => Typecho_Date::time(),
+                                        $installDb->query($installDb->insert('table.contents')->rows(array('title' => _t('关于'), 'slug' => 'start-page', 'created' => Typecho_Date::gmtTime(), 'modified' => Typecho_Date::gmtTime(),
                                         'text' => '<!--markdown-->' . _t('本页面由 Typecho 创建, 这只是个测试页面.'), 'authorId' => 1, 'order' => 0, 'type' => 'page', 'status' => 'publish', 'commentsNum' => 0, 'allowComment' => 1,
                                         'allowPing' => 1, 'allowFeed' => 1, 'parent' => 0)));
 
                                         /** 初始评论 */
-                                        $installDb->query($installDb->insert('table.comments')->rows(array('cid' => 1, 'created' => Typecho_Date::time(), 'author' => 'Typecho', 'ownerId' => 1, 'url' => 'http://typecho.org',
+                                        $installDb->query($installDb->insert('table.comments')->rows(array('cid' => 1, 'created' => Typecho_Date::gmtTime(), 'author' => 'Typecho', 'ownerId' => 1, 'url' => 'http://typecho.org',
                                         'ip' => '127.0.0.1', 'agent' => $options->generator, 'text' => '欢迎加入 Typecho 大家族', 'type' => 'comment', 'status' => 'approved', 'parent' => 0)));
 
                                         /** 初始用户 */
@@ -399,7 +389,7 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                                         $hasher = new PasswordHash(8, true);
 
                                         $installDb->query($installDb->insert('table.users')->rows(array('name' => $config['userName'], 'password' => $hasher->HashPassword($password), 'mail' => $config['userMail'],
-                                        'url' => 'http://www.typecho.org', 'screenName' => $config['userName'], 'group' => 'administrator', 'created' => Typecho_Date::time())));
+                                        'url' => 'http://www.typecho.org', 'screenName' => $config['userName'], 'group' => 'administrator', 'created' => Typecho_Date::gmtTime())));
 
                                         unset($_SESSION['typecho']);
                                         header('Location: ./install.php?finish&user=' . urlencode($config['userName'])
@@ -454,16 +444,15 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                 <?php endif;?>
             <?php elseif (isset($_GET['config'])): ?>
             <?php
-                    $adapters = array('Mysql', 'Mysqli', 'Pdo_Mysql', 'SQLite', 'Pdo_SQLite', 'Pgsql', 'Pdo_Pgsql');
+                    $adapters = array('Mysql', 'Pdo_Mysql', 'SQLite', 'Pdo_SQLite', 'Pgsql', 'Pdo_Pgsql');
                     foreach ($adapters as $firstAdapter) {
                         if (_p($firstAdapter)) {
                             break;
                         }
                     }
                     $adapter = _r('dbAdapter', $firstAdapter);
-                    $parts = explode('_', $adapter);
-
-                    $type = $adapter == 'Mysqli' ? 'Mysql' : array_pop($parts);
+                    $type = explode('_', $adapter);
+                    $type = array_pop($type);
             ?>
                 <form method="post" action="?config" name="config">
                     <h1 class="typecho-install-title"><?php _e('确认您的配置'); ?></h1>
@@ -536,16 +525,6 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                                 }
 
                                 if($success) {
-                                    // 重置原有数据库状态
-                                    if (isset($installDb)) {
-                                        try {
-                                            $installDb->query($installDb->update('table.options')
-                                                ->rows(array('value' => 0))->where('name = ?', 'installed'));
-                                        } catch (Exception $e) {
-                                            // do nothing
-                                        }
-                                    }
-
                                     Typecho_Cookie::set('__typecho_config', base64_encode(serialize(array_merge(array(
                                         'prefix'    =>  _r('dbPrefix'),
                                         'userName'  =>  _r('userName'),
@@ -561,7 +540,7 @@ Typecho_Cookie::set('__typecho_lang', $lang);
                                     }
 
                                     /** 初始化配置文件 */
-                                    $lines = array_slice(file(__FILE__), 1, 52);
+                                    $lines = array_slice(file(__FILE__), 0, 52);
                                     $lines[] = "
 /** 定义数据库参数 */
 \$db = new Typecho_Db('{$adapter}', '" . _r('dbPrefix') . "');
@@ -572,6 +551,9 @@ Typecho_Db::set(\$db);
                                     if (!Typecho_Common::isAppEngine()) {
                                         @file_put_contents('./config.inc.php', $contents);
                                     }
+
+                                    // 创建一个用于标识的临时文件
+                                    $_SESSION['typecho'] = 1;
 
                                     if (!file_exists('./config.inc.php')) {
                                     ?>
@@ -588,7 +570,7 @@ Typecho_Db::set(\$db);
 
                                 // 安装不成功删除配置文件
                                 if($success != true && file_exists(__TYPECHO_ROOT_DIR__ . '/config.inc.php')) {
-                                    @unlink(__TYPECHO_ROOT_DIR__ . '/config.inc.php');
+                                    unlink(__TYPECHO_ROOT_DIR__ . '/config.inc.php');
                                 }
                             }
                         ?>
@@ -596,12 +578,12 @@ Typecho_Db::set(\$db);
                             <li>
                             <label for="dbAdapter" class="typecho-label"><?php _e('数据库适配器'); ?></label>
                             <select name="dbAdapter" id="dbAdapter">
-                                <?php if (_p('Mysql')): ?><option value="Mysql"<?php if('Mysql' == $adapter): ?> selected="selected"<?php endif; ?>><?php _e('Mysql 原生函数适配器') ?></option><?php endif; ?>
-                                <?php if (_p('SQLite')): ?><option value="SQLite"<?php if('SQLite' == $adapter): ?> selected="selected"<?php endif; ?>><?php _e('SQLite 原生函数适配器 (SQLite 2.x)') ?></option><?php endif; ?>
-                                <?php if (_p('Pgsql')): ?><option value="Pgsql"<?php if('Pgsql' == $adapter): ?> selected="selected"<?php endif; ?>><?php _e('Pgsql 原生函数适配器') ?></option><?php endif; ?>
-                                <?php if (_p('Pdo_Mysql')): ?><option value="Pdo_Mysql"<?php if('Pdo_Mysql' == $adapter): ?> selected="selected"<?php endif; ?>><?php _e('Pdo 驱动 Mysql 适配器') ?></option><?php endif; ?>
-                                <?php if (_p('Pdo_SQLite')): ?><option value="Pdo_SQLite"<?php if('Pdo_SQLite' == $adapter): ?> selected="selected"<?php endif; ?>><?php _e('Pdo 驱动 SQLite 适配器 (SQLite 3.x)') ?></option><?php endif; ?>
-                                <?php if (_p('Pdo_Pgsql')): ?><option value="Pdo_Pgsql"<?php if('Pdo_Pgsql' == $adapter): ?> selected="selected"<?php endif; ?>><?php _e('Pdo 驱动 PostgreSql 适配器') ?></option><?php endif; ?>
+                                <?php if (_p('Mysql')): ?><option value="Mysql"<?php if('Mysql' == $adapter): ?> selected=true<?php endif; ?>><?php _e('Mysql 原生函数适配器') ?></option><?php endif; ?>
+                                <?php if (_p('SQLite')): ?><option value="SQLite"<?php if('SQLite' == $adapter): ?> selected=true<?php endif; ?>><?php _e('SQLite 原生函数适配器 (SQLite 2.x)') ?></option><?php endif; ?>
+                                <?php if (_p('Pgsql')): ?><option value="Pgsql"<?php if('Pgsql' == $adapter): ?> selected=true<?php endif; ?>><?php _e('Pgsql 原生函数适配器') ?></option><?php endif; ?>
+                                <?php if (_p('Pdo_Mysql')): ?><option value="Pdo_Mysql"<?php if('Pdo_Mysql' == $adapter): ?> selected=true<?php endif; ?>><?php _e('Pdo 驱动 Mysql 适配器') ?></option><?php endif; ?>
+                                <?php if (_p('Pdo_SQLite')): ?><option value="Pdo_SQLite"<?php if('Pdo_SQLite' == $adapter): ?> selected=true<?php endif; ?>><?php _e('Pdo 驱动 SQLite 适配器 (SQLite 3.x)') ?></option><?php endif; ?>
+                                <?php if (_p('Pdo_Pgsql')): ?><option value="Pdo_Pgsql"<?php if('Pdo_Pgsql' == $adapter): ?> selected=true<?php endif; ?>><?php _e('Pdo 驱动 PostgreSql 适配器') ?></option><?php endif; ?>
                             </select>
                             <p class="description"><?php _e('请根据您的数据库类型选择合适的适配器'); ?></p>
                             </li>
@@ -666,7 +648,7 @@ Typecho_Db::set(\$db);
                     <?php if (count($langs) > 1): ?>
                     <select style="float: right" onchange="window.location.href='install.php?lang=' + this.value">
                         <?php foreach ($langs as $key => $val): ?>
-                        <option value="<?php echo $key; ?>"<?php if ($lang == $key): ?> selected<?php endif; ?>><?php echo $val; ?></option>
+                        <option value="<?php echo $key; ?>"<?php if ($lang == $val): ?> selected<?php endif; ?>><?php echo $val; ?></option>
                         <?php endforeach; ?>
                     </select>
                     <?php endif; ?>
